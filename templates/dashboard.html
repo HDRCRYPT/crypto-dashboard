@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Crypto Terminal</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- TradingView -->
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+  <style>
+    body {
+      background-color: #181818;
+      color: #EEEEEE;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar: coin selector -->
+  <aside class="w-48 bg-[#111] border-r border-neutral-800 p-4">
+    <h1 class="text-xl font-bold mb-4">Coins</h1>
+
+    <button id="btn-BTC"
+            class="coin-btn w-full text-left px-3 py-2 mb-2 rounded-md bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold"
+            onclick="selectCoin('BTC')">
+      BTC
+    </button>
+
+    <button id="btn-ETH"
+            class="coin-btn w-full text-left px-3 py-2 mb-2 rounded-md bg-neutral-900 hover:bg-neutral-700 text-sm font-semibold"
+            onclick="selectCoin('ETH')">
+      ETH
+    </button>
+
+    <button id="btn-SOL"
+            class="coin-btn w-full text-left px-3 py-2 mb-2 rounded-md bg-neutral-900 hover:bg-neutral-700 text-sm font-semibold"
+            onclick="selectCoin('SOL')">
+      SOL
+    </button>
+
+    <div class="mt-6 text-xs text-neutral-500">
+      Click a coin to update prices & chart.<br>
+      Click USD / GBP tabs to change pair.
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="flex-1 p-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold">Crypto Terminal</h2>
+        <p id="updated" class="text-xs text-neutral-400 mt-1">
+          Loading...
+        </p>
+      </div>
+    </div>
+
+    <!-- Prices: collapsible sections -->
+    <section class="mb-6">
+      <h3 class="text-lg font-semibold mb-2">Prices</h3>
+      <div id="prices" class="space-y-2"></div>
+    </section>
+
+    <!-- Chart controls -->
+    <section class="mb-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span id="chart-title" class="text-lg font-semibold">
+          BTC / USD
+        </span>
+      </div>
+
+      <!-- USD / GBP tabs -->
+      <div class="inline-flex rounded-md overflow-hidden border border-neutral-700">
+        <button id="tab-USD"
+                class="px-4 py-1 text-sm bg-neutral-800 text-white font-medium"
+                onclick="selectCurrency('USD')">
+          USD
+        </button>
+        <button id="tab-GBP"
+                class="px-4 py-1 text-sm bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+                onclick="selectCurrency('GBP')">
+          GBP
+        </button>
+      </div>
+    </section>
+
+    <!-- TradingView chart container -->
+    <section>
+      <div id="tv_chart" class="w-full" style="height: 520px;"></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // ---- State ----
+  let selectedCoin = "BTC";
+  let selectedCurrency = "USD";
+  let tvWidget = null;
+
+  // Map coin + currency -> TradingView symbol
+  const SYMBOLS = {
+    BTC: {
+      USD: "BINANCE:BTCUSDT",
+      GBP: "COINBASE:BTCGBP" // adjust if needed
+    },
+    ETH: {
+      USD: "BINANCE:ETHUSDT",
+      GBP: "COINBASE:ETHGBP" // adjust if needed
+    },
+    SOL: {
+      USD: "BINANCE:SOLUSDT",
+      GBP: "COINBASE:SOLGBP" // if unsupported, change to a working symbol or leave as is
+    }
+  };
+
+  // ---- Prices loading + collapsible cards ----
+  async function loadPrices() {
+    try {
+      const res = await fetch('/api/prices');
+      const data = await res.json();
+
+      document.getElementById('updated').innerText = `Last updated: ${data.updated}`;
+
+      const container = document.getElementById('prices');
+      container.innerHTML = "";
+
+      for (const [symbol, p] of Object.entries(data.prices)) {
+        const card = document.createElement('div');
+        card.className = "border border-neutral-800 rounded-md overflow-hidden";
+
+        const header = document.createElement('button');
+        header.type = "button";
+        header.className = "w-full flex justify-between items-center px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-sm";
+        header.onclick = () => toggleDetails(symbol);
+
+        header.innerHTML = `
+          <span class="font-semibold">${symbol}</span>
+          <span class="text-xs text-neutral-400">${p.arrow}</span>
+        `;
+
+        const details = document.createElement('div');
+        details.id = `details-${symbol}`;
+        details.className = "px-3 py-2 bg-neutral-950 text-sm";
+
+        details.innerHTML = `
+          <div>USD: $${p.usd.toLocaleString()} ${p.arrow}</div>
+          <div>GBP: £${p.gbp.toLocaleString()} ${p.arrow}</div>
+        `;
+
+        card.appendChild(header);
+        card.appendChild(details);
+        container.appendChild(card);
+      }
+
+    } catch (e) {
+      document.getElementById('updated').innerText = "Error fetching prices";
+    }
+  }
+
+  function toggleDetails(symbol) {
+    const el = document.getElementById(`details-${symbol}`);
+    if (!el) return;
+    if (el.style.display === "none") {
+      el.style.display = "block";
+    } else {
+      el.style.display = "none";
+    }
+  }
+
+  // Refresh every 2 min
+  loadPrices();
+  setInterval(loadPrices, 120000);
+
+
+  // ---- TradingView chart logic (single widget, dynamic symbol) ----
+  function loadChart() {
+    const containerId = "tv_chart";
+    const symbol = SYMBOLS[selectedCoin][selectedCurrency];
+
+    document.getElementById('chart-title').innerText = `${selectedCoin} / ${selectedCurrency}`;
+
+    // Clear previous widget
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+
+    // Recreate widget
+    tvWidget = new TradingView.widget({
+      "symbol": symbol,
+      "interval": "60",
+      "theme": "dark",
+      "style": "1",
+      "locale": "en",
+      "toolbar_bg": "#181818",
+      "container_id": containerId,
+      "autosize": true
+    });
+
+    updateActiveControls();
+  }
+
+  function selectCoin(coin) {
+    selectedCoin = coin;
+    loadChart();
+  }
+
+  function selectCurrency(curr) {
+    selectedCurrency = curr;
+    loadChart();
+  }
+
+  function updateActiveControls() {
+    // Sidebar active state
+    ["BTC", "ETH", "SOL"].forEach(c => {
+      const btn = document.getElementById(`btn-${c}`);
+      if (!btn) return;
+      if (c === selectedCoin) {
+        btn.className = "coin-btn w-full text-left px-3 py-2 mb-2 rounded-md bg-neutral-800 text-sm font-semibold";
+      } else {
+        btn.className = "coin-btn w-full text-left px-3 py-2 mb-2 rounded-md bg-neutral-900 hover:bg-neutral-700 text-sm font-semibold";
+      }
+    });
+
+    // Currency tab active state
+    const tabUSD = document.getElementById("tab-USD");
+    const tabGBP = document.getElementById("tab-GBP");
+
+    if (selectedCurrency === "USD") {
+      tabUSD.className = "px-4 py-1 text-sm bg-neutral-800 text-white font-medium";
+      tabGBP.className = "px-4 py-1 text-sm bg-neutral-900 text-neutral-300 hover:bg-neutral-800";
+    } else {
+      tabGBP.className = "px-4 py-1 text-sm bg-neutral-800 text-white font-medium";
+      tabUSD.className = "px-4 py-1 text-sm bg-neutral-900 text-neutral-300 hover:bg-neutral-800";
+    }
+  }
+
+  // Initial chart load
+  document.addEventListener("DOMContentLoaded", () => {
+    loadChart();
+  });
+</script>
+
+</body>
+</html>

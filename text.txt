@@ -1,0 +1,10 @@
+https://discord.com/api/webhooks/1443147410950852762/8aTP8jGKcTj13Fzp841X9V6WNLXZRAHdi8CybnovdqaHt2rhjLkQ8D6KzWXVKf9bR6n8
+
+cd /Users/user/Downloads/prices
+source venv/bin/activate
+
+
+cd /Users/user/Downloads/prices
+python3 -m venv venv
+source venv/bin/activate
+pip install requests flask
